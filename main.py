@@ -35,9 +35,13 @@ async def create_user(user_data: UserCreate,
     
 
 @app.post("/item-create", response_model=Item)
-async def create_item(item_data: ItemCreate, 
+async def create_item(item_data: ItemCreate,
+                        seller: User,
                         session: Session = Depends(get_session)) -> Item:
-    
+    if not seller:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not seller.loged_in:
+        raise HTTPException(status_code=401, detail="User is not logged in.")
     item = Item(**item_data.dict())
     session.add(item)
     session.commit()
@@ -56,28 +60,38 @@ async def create_transaction(transaction_data: TransactionCreate,
     return transaction
 
 @app.post("/user-login", response_model=User)
-async def user_login(user_data: UserCreate, session: Session = Depends(get_session)) -> User:
-    user = session.exec(select(User).where(User.email == user_data.email)).first()
+async def user_login(user_email: str, 
+                     user_password: str,
+                     session: Session = Depends(get_session)) -> User:
+    
+    user = session.exec(select(User).where(User.email == user_email)).first()
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    if user.password != user_data.password:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid email.")
+    if user.password != user_password:
+        raise HTTPException(status_code=401, detail="Invalid password.")
     user.loged_in = True
     session.add(user)
     session.commit()
     session.refresh(user)
     return user
+    
+    
 
 @app.post("/user-logout", response_model=User)
-async def user_logout(user_data: UserCreate, session: Session = Depends(get_session)) -> User:
-    user = session.exec(select(User).where(User.email == user_data.email)).first()
+async def user_logout(user_email: str, 
+                      user_password: str,
+                      session: Session = Depends(get_session)) -> User:
+    
+    user = session.exec(select(User).where(User.email == user_email)).first()
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid email.")
+    if user.password != user_password:
+        raise HTTPException(status_code=401, detail="Invalid password.")
     user.loged_in = False
     session.add(user)
     session.commit()
     session.refresh(user)
-    return user    
+    return user       
 
 @app.delete("/remove-item", response_model=Item)
 async def remove_item(item_id: int, session: Session = Depends(get_session)) -> Item:
@@ -100,19 +114,7 @@ async def remove_user(user_id: int, session: Session = Depends(get_session)) -> 
 @app.get("/users", response_model=List[User])
 async def get_users(session: Session = Depends(get_session)) -> List[User]:
     users = session.exec(select(User)).all()
-    
-    sanitized_users = [
-        {
-            "id": user.id,
-            "name": user.name,
-            "email": user.email,
-            "created_at": user.created_at,
-            "loged_in": user.loged_in
-        }
-        for user in users
-    ]
-    
-    return sanitized_users
+    return users
     
 
 @app.get("/items", response_model=List[Item])
