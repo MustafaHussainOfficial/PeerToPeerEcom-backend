@@ -1,0 +1,157 @@
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional, Set, Dict, Any, Tuple, Union, Callable
+from datetime import datetime
+from sqlmodel import Session, select
+from db import init_db, get_session
+from models import User, Item, Transaction, Image, UserCreate, ItemCreate, TransactionCreate, TransactionRead, UserRead
+from contextlib import asynccontextmanager
+from sqlalchemy import or_, func
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+    
+
+app = FastAPI(lifespan=lifespan)
+
+@app.get("/")
+def main():
+    return { "message": "Hello World" }
+
+@app.post("/user-create", response_model=User)
+async def create_user(user_data: UserCreate, 
+                        session: Session = Depends(get_session)) -> User:
+    
+    user = User(**user_data.dict())
+    user.loged_in = True
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+    
+
+@app.post("/item-create", response_model=Item)
+async def create_item(item_data: ItemCreate, 
+                        session: Session = Depends(get_session)) -> Item:
+    
+    item = Item(**item_data.dict())
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+    
+
+@app.post("/transaction-create", response_model=Transaction)
+async def create_transaction(transaction_data: TransactionCreate, 
+                                session: Session = Depends(get_session)) -> Transaction:
+    
+    transaction = Transaction(**transaction_data.dict())
+    session.add(transaction)
+    session.commit()
+    session.refresh(transaction)
+    return transaction
+
+@app.post("/user-login", response_model=User)
+async def user_login(user_data: UserCreate, session: Session = Depends(get_session)) -> User:
+    user = session.exec(select(User).where(User.email == user_data.email)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if user.password != user_data.password:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    user.loged_in = True
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
+
+@app.post("/user-logout", response_model=User)
+async def user_logout(user_data: UserCreate, session: Session = Depends(get_session)) -> User:
+    user = session.exec(select(User).where(User.email == user_data.email)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    user.loged_in = False
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user    
+
+@app.delete("/remove-item", response_model=Item)
+async def remove_item(item_id: int, session: Session = Depends(get_session)) -> Item:
+    item = session.exec(select(Item).where(Item.id == item_id)).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    session.delete(item)
+    session.commit()
+    return item
+
+@app.delete("/remove-user", response_model=User)
+async def remove_user(user_id: int, session: Session = Depends(get_session)) -> User:
+    user = session.exec(select(User).where(User.id == user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    session.delete(user)
+    session.commit()
+    return user
+
+@app.get("/users", response_model=List[User])
+async def get_users(session: Session = Depends(get_session)) -> List[User]:
+    users = session.exec(select(User)).all()
+    
+    sanitized_users = [
+        {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "created_at": user.created_at,
+            "loged_in": user.loged_in
+        }
+        for user in users
+    ]
+    
+    return sanitized_users
+    
+
+@app.get("/items", response_model=List[Item])
+async def get_items(
+    name: Optional[str] = None,
+    price_upper: Optional[float] = None,
+    price_lower: Optional[float] = None,
+    q: Optional[str] = None,
+    session: Session = Depends(get_session)
+) -> List[Item]:
+
+    query = select(Item)
+    if name:
+        query = query.where(Item.name.contains(name))
+    if price_upper:
+        query = query.where(Item.price <= price_upper)
+    if price_lower:
+        query = query.where(Item.price >= price_lower)
+    if q:
+        query = query.where(
+            or_(
+                func.lower(Item.name).contains(q.lower()),
+                func.lower(Item.description).contains(q.lower())
+            )
+        )
+    items = session.exec(query).all()
+    return items
+    
+
+@app.get("/transactions", response_model=List[Transaction])
+async def get_transactions(session: Session = Depends(get_session)) -> List[Transaction]:
+    transactions = session.exec(select(Transaction)).all()
+    return transactions
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+
+
