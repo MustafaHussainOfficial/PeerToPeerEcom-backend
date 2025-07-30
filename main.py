@@ -74,6 +74,10 @@ async def remove_item(*,current_user: User = Depends(get_current_user),
                       item_id: int,
                       session: Session = Depends(get_session)) -> Item:
     item = session.exec(select(Item).where(Item.id == item_id)).first()
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Not authorized")
+    if not current_user.loged_in:
+        raise HTTPException(status_code=401, detail="User is not logged in.")
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.seller_id != current_user.id:
@@ -83,7 +87,13 @@ async def remove_item(*,current_user: User = Depends(get_current_user),
     return item
 
 @app.delete("/remove-user", response_model=User)
-async def remove_user(user_id: int, session: Session = Depends(get_session)) -> User:
+async def remove_user(user_id: int, session: Session = Depends(get_session), current_user: User = Depends(get_current_user)) -> User:
+    if not current_user:
+        raise HTTPException(status_code=404, detail="Not authorized")
+    if not current_user.loged_in:
+        raise HTTPException(status_code=401, detail="User is not logged in.")
+    if current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="You are not authorized to delete this user")
     user = session.exec(select(User).where(User.id == user_id)).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
