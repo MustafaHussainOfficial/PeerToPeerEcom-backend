@@ -8,7 +8,8 @@ from db import init_db, get_session
 from models import User, Item, Transaction, Image, UserCreate, ItemCreate, TransactionCreate, TransactionRead, UserRead
 from contextlib import asynccontextmanager
 from sqlalchemy import or_, func
-
+import auth
+from auth import get_current_user
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,31 +19,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.include_router(auth.router)
+
 @app.get("/")
 def main():
     return { "message": "Hello World" }
 
-@app.post("/user-create", response_model=User)
-async def create_user(user_data: UserCreate, 
-                        session: Session = Depends(get_session)) -> User:
-    
-    user = User(**user_data.dict())
-    user.loged_in = True
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
-    
 
+    
 @app.post("/item-create", response_model=Item)
 async def create_item(item_data: ItemCreate,
-                        seller: User,
+                        current_user: User = Depends(get_current_user),
                         session: Session = Depends(get_session)) -> Item:
-    if not seller:
+    if not current_user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not seller.loged_in:
+    if not current_user.loged_in:
         raise HTTPException(status_code=401, detail="User is not logged in.")
-    item = Item(**item_data.dict())
+    
+    # Create item with the current user's ID as seller_id
+    item = Item(
+        **item_data.dict(),
+        seller_id=current_user.id
+    )
     session.add(item)
     session.commit()
     session.refresh(item)
@@ -58,46 +56,28 @@ async def create_transaction(transaction_data: TransactionCreate,
     session.commit()
     session.refresh(transaction)
     return transaction
-
-@app.post("/user-login", response_model=User)
-async def user_login(user_email: str, 
-                     user_password: str,
-                     session: Session = Depends(get_session)) -> User:
-    
-    user = session.exec(select(User).where(User.email == user_email)).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email.")
-    if user.password != user_password:
-        raise HTTPException(status_code=401, detail="Invalid password.")
-    user.loged_in = True
-    session.add(user)
-    session.commit()
-    session.refresh(user)
-    return user
     
     
 
 @app.post("/user-logout", response_model=User)
-async def user_logout(user_email: str, 
-                      user_password: str,
-                      session: Session = Depends(get_session)) -> User:
-    
-    user = session.exec(select(User).where(User.email == user_email)).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email.")
-    if user.password != user_password:
-        raise HTTPException(status_code=401, detail="Invalid password.")
-    user.loged_in = False
-    session.add(user)
+async def logout(
+    current_user: User = Depends(get_current_user), 
+    session: Session = Depends(get_session)
+):
+    current_user.logged_in = False
+    session.add(current_user)
     session.commit()
-    session.refresh(user)
-    return user       
+    return {"detail": f"User {current_user.email} logged out successfully"}     
 
 @app.delete("/remove-item", response_model=Item)
-async def remove_item(item_id: int, session: Session = Depends(get_session)) -> Item:
+async def remove_item(*,current_user: User = Depends(get_current_user),
+                      item_id: int,
+                      session: Session = Depends(get_session)) -> Item:
     item = session.exec(select(Item).where(Item.id == item_id)).first()
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+    if item.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not authorized to delete this item")
     session.delete(item)
     session.commit()
     return item

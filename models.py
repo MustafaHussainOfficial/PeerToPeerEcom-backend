@@ -56,8 +56,12 @@ class Item(ItemBase, table=True):
     transactions: List["Transaction"] = Relationship(back_populates="item")
     images: List[Image] = Relationship(back_populates="item")
 
-class ItemCreate(ItemBase):
-    pass
+class ItemCreate(SQLModel):
+    name: str
+    description: Optional[str] = None
+    price: float
+    tax: Optional[float] = None
+    thumbnail_url: Optional[str] = None
 
 
 class TransactionBase(SQLModel):
