@@ -30,14 +30,16 @@ class Token(BaseModel):
 @router.post("/")
 async def create_user(*, db: Session = Depends(get_session), 
                       user_data: UserCreate):
-       create_user_model = User(
+        if db.exec(select(User).where(User.email == user_data.email)).first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exists");
+        create_user_model = User(
             name=user_data.name,
             email=user_data.email,
             password=bcrypt_context.hash(user_data.password),
             profile_photo_url=user_data.profile_photo_url
-       ) 
-       db.add(create_user_model)
-       db.commit()
+        ) 
+        db.add(create_user_model)
+        db.commit()
        
 @router.post("/token")
 async def login_for_access_token(*, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], 

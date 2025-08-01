@@ -5,7 +5,7 @@ from typing import List, Optional, Set, Dict, Any, Tuple, Union, Callable
 from datetime import datetime
 from sqlmodel import Session, select
 from db import init_db, get_session
-from models import User, Item, Transaction, Image, UserCreate, ItemCreate, TransactionCreate, TransactionRead, UserRead
+from models import User, Item, Transaction, Image, UserCreate, ItemCreate, TransactionCreate, TransactionRead, UserRead, ItemUpdate, UserUpdate
 from contextlib import asynccontextmanager
 from sqlalchemy import or_, func
 import auth
@@ -138,6 +138,48 @@ async def get_items(
 async def get_transactions(session: Session = Depends(get_session)) -> List[Transaction]:
     transactions = session.exec(select(Transaction)).all()
     return transactions
+
+@app.patch("/update-item/{item_id}", response_model=Item)
+async def update_item(*, 
+                      current_user: User = Depends(get_current_user),
+                      item_id: int,
+                      item_data: ItemUpdate,
+                      session: Session = Depends(get_session)) -> Item:
+    item = session.exec(select(Item).where(Item.id == item_id)).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.seller_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not authorized to update this item")
+
+    update_data = item_data.dict(exclude_unset=True)
+    for var, value in update_data.items():
+        setattr(item, var, value)
+    item.updated_at = datetime.utcnow()
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    return item
+    
+@app.patch("/update-user/{user_id}", response_model=User)
+async def update_user(*, 
+                      current_user: User = Depends(get_current_user),
+                      user_id: int,
+                      user_data: UserUpdate,
+                      session: Session = Depends(get_session)) -> User:
+    user = session.exec(select(User).where(User.id == user_id)).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not authorized to update this user")
+
+    update_data = user_data.dict(exclude_unset=True)
+    for var, value in update_data.items():
+        setattr(user, var, value)
+    user.updated_at = datetime.utcnow()
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user 
 
 
 if __name__ == "__main__":

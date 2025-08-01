@@ -25,7 +25,12 @@ class User(UserBase, table=True):
     purchases: List["Transaction"] = Relationship(back_populates="buyer")
     loged_in: Optional[bool] = False
 
-    
+class UserUpdate(SQLModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+
 class UserRead(SQLModel):
     id: Optional[int]
     username: str
@@ -63,6 +68,12 @@ class ItemCreate(SQLModel):
     tax: Optional[float] = None
     thumbnail_url: Optional[str] = None
 
+class ItemUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[float] = None
+    tax: Optional[float] = None
+    thumbnail_url: Optional[str] = None
 
 class TransactionBase(SQLModel):
     buyer_id: int = Field(foreign_key="user.id")
