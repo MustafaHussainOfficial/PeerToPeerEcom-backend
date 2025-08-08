@@ -21,6 +21,14 @@ app = FastAPI(lifespan=lifespan)
 
 app.include_router(auth.router)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/")
 def main():
     return { "message": "Hello World" }
@@ -106,6 +114,9 @@ async def get_users(session: Session = Depends(get_session)) -> List[User]:
     users = session.exec(select(User)).all()
     return users
     
+@app.get("/current-user", response_model=User)
+async def get_current_user(current_user: User = Depends(get_current_user)) -> User:
+    return current_user
 
 @app.get("/items", response_model=List[Item])
 async def get_items(
@@ -133,6 +144,17 @@ async def get_items(
     items = session.exec(query).all()
     return items
     
+@app.get("/item/{item_id}", response_model=Item)
+async def get_item(item_id: int, session: Session = Depends(get_session)) -> Item:
+    item = session.exec(select(Item).where(Item.id == item_id)).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return item
+
+@app.get("/my-items", response_model=List[Item])
+async def get_my_items(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)) -> List[Item]:
+    items = session.exec(select(Item).where(Item.seller_id == current_user.id)).all()
+    return items
 
 @app.get("/transactions", response_model=List[Transaction])
 async def get_transactions(session: Session = Depends(get_session)) -> List[Transaction]:
